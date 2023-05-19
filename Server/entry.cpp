@@ -62,14 +62,14 @@ reConnect:
 		return false;
 	}
 	// 创建接收心跳包的线程
-	HeartBeat = CreateThread(
-		NULL, 0, (LPTHREAD_START_ROUTINE)RecvHeartBeat, (LPVOID)myServer, 0, NULL
-	);
+	//HeartBeat = CreateThread(
+	//	NULL, 0, (LPTHREAD_START_ROUTINE)RecvHeartBeat, (LPVOID)myServer, 0, NULL
+	//);
 
-	if (HeartBeat == NULL) {
-		std::wcout << L"Create Thread Error :" << GetLastError() << "\n";
-		return false;
-	}
+	//if (HeartBeat == NULL) {
+	//	std::wcout << L"Create Thread Error :" << GetLastError() << "\n";
+	//	return false;
+	//}
 
 	// 输入并发送指令
 	UINT32 command = 0;
@@ -119,7 +119,7 @@ reConnect:
 		case CMD: {
 			std::wcout << L"Please input correct cmd instruction:\n";
 			// 初始化
-			memset(Instruction, 0, CMDSIZE);
+			ZeroMemory(Instruction, CMDSIZE * sizeof(wchar_t));
 			// 读取cmd指令
 			std::wcin.getline(Instruction, CMDSIZE);
 			rewind(stdin);
@@ -158,7 +158,7 @@ reConnect:
 			wchar_t* path = new wchar_t[FILE_PATH_LEN];
 			// 文件长度
 			UINT32 len = 0;
-			memset(path, 0, FILE_PATH_LEN * sizeof(wchar_t));
+			ZeroMemory(path, FILE_PATH_LEN * sizeof(wchar_t));
 
 			// 先获取需要上传到client的本地文件路径
 			std::wcout << L"Please enter the server file path\n";
@@ -179,7 +179,7 @@ reConnect:
 			}
 
 			// 上传的文件路径
-			memset(path, 0, FILE_PATH_LEN * sizeof(wchar_t));
+			ZeroMemory(path, FILE_PATH_LEN * sizeof(wchar_t));
 			std::wcout << L"Please enter the client file path\n";
 			rewind(stdin);
 			// D:\test.txt
@@ -209,7 +209,59 @@ reConnect:
 			break;
 		}
 		case DOWNLOAD: {
+			// 先输入要下载的文件在客户端中的完整路径
+			wchar_t* path = new wchar_t[FILE_PATH_LEN];
+			ZeroMemory(path, FILE_PATH_LEN * sizeof(wchar_t));
 
+			std::wcout << L"Please enter the client file path\n";
+			rewind(stdin);
+			std::wcin.getline(path, FILE_PATH_LEN);
+			rewind(stdin);
+			// D:\test.txt
+			//std::wcout << "Path is " << path << "\n";
+
+			// 将文件路径发送给客户端
+			if (!myServer->SendCmd(path, recvbuf)) {
+				std::wcout << L"Send file path error" << WSAGetLastError() << "\n";
+				return false;
+			}
+
+			// 再new文件的空间
+			FileBuf = new char[FILEBUFFERLEN * sizeof(char)];
+			ZeroMemory(FileBuf, FILEBUFFERLEN * sizeof(char));
+
+			// 先接收客户端发来的标志， 如果是1表明文件路径输入错误， 2表示文件读入失败，0表示文件正常读入
+			UINT32 flag = -1;
+			if (!myServer->RecvIns(&flag)) {
+				std::wcout << L"Recv Ins Error %d\n" << WSAGetLastError() << "\n";
+				return false;
+			}
+			// 成功将客户端文件读入就接收
+			if (flag == SUCCESS) {
+				// 接收客户端发送来的文件
+				if (!myServer->RecvFile(FileBuf, FILEBUFFERLEN)) {
+					std::wcout << L"Recv File error %d\n" << WSAGetLastError() << "\n";
+					return false;
+				}
+				// 写入server路径
+				wchar_t WritePath[] = L"Client file.txt";
+				if (!myServer->WriteToFile(FileBuf, WritePath)) {
+					std::wcout << L"write to file error %d\n" << GetLastError() << "\n";
+					return false;
+				}
+			}
+			// 没有这样的文件
+			else if (flag == NOSUCHFILE) {
+				std::wcout << L"Open File Error, Maybe there not have this file, please input the correct client file path\n";
+				break;
+			}
+			// 读取失败
+			else if (flag == READERROR) {
+				std::wcout << L"Read File To buf error, maybe this file size is too large\n";
+				break;
+			}
+			std::wcout << L"Recv Client File Success\n";
+			delete[] path;
 			break;
 		}
 		case SCREENSHOT: {

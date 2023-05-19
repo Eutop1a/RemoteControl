@@ -7,3 +7,10 @@ enum Command {
 	SCREENSHOT,
 	SUICIDE
 };
+
+
+enum DownloadFileFlag {
+	SUCCESS,
+	NOSUCHFILE,
+	READERROR
+};

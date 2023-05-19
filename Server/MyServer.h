@@ -73,5 +73,11 @@ public:
 	bool ReadFromFile(wchar_t* Path, UINT32* len, char** FileBuf);
 	// 发送文件
 	bool SendFile(char* File, int len);
+	// 接收文件
+	bool RecvFile(char* File, int len);
+	// 写入文件
+	bool WriteToFile(char* FileBuf, wchar_t* path);
+	// 接收指令
+	bool RecvIns(UINT32* command);
 };
 

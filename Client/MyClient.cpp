@@ -8,10 +8,10 @@
 //	return this->sock;
 //}
 
-bool MySocket::SocketInit(HANDLE Mutex) {
-
+bool MySocket::SocketInit(CRITICAL_SECTION criticalSection) {
+	this->criticalSection = criticalSection;
 	// 初始化成员变量
-	this->mutex = Mutex;
+	//this->mutex = Mutex;
 	this->pRecv = NULL;
 	this->pSend = NULL;
 
@@ -35,7 +35,7 @@ bool MySocket::SocketInit(HANDLE Mutex) {
 
 MySocket* MySocket::New() {
 	MySocket* Copy = new MySocket;
-
+	Copy->criticalSection = this->criticalSection;
 	Copy->mutex = this->mutex;
 	Copy->pRecv = NULL;
 	Copy->pSend = NULL;
@@ -53,7 +53,8 @@ void MySocket::FreeCopy() {
 }
 
 void MySocket::Free() {
-	WaitForSingleObject(this->mutex, INFINITE);
+	DeleteCriticalSection(&this->criticalSection);
+	//WaitForSingleObject(this->mutex, INFINITE);
 	if (this->sock != INVALID_SOCKET) {
 		// 关闭socket上面的连接
 		shutdown(this->sock, SD_BOTH);
@@ -70,7 +71,7 @@ void MySocket::Free() {
 
 bool MySocket::Connect(const char* ip, u_short port) {
 	if (this->sock == INVALID_SOCKET) {
-		if (!this->SocketInit(this->mutex)) {
+		if (!this->SocketInit(this->criticalSection)) {
 			return false;
 		}
 	}
@@ -157,13 +158,16 @@ bool MySocket::MySendHeartBeat() {
 		*(struct HEARTBEAT*)this->pSend = packet;
 		int sendLen = sizeof(struct HEARTBEAT);
 
-		WaitForSingleObject(this->mutex, INFINITE);
+		EnterCriticalSection(&this->criticalSection);
+		//WaitForSingleObject(this->mutex, INFINITE);
 		// 发送
 		if (send(this->sock, (const char*)this->pSend, sendLen, 0) <= 0) {
 			wprintf(L"Send HearBeat error %d\n", WSAGetLastError());
+			LeaveCriticalSection(&this->criticalSection);
 			return false;
 		}
-		ReleaseMutex(this->mutex);
+		LeaveCriticalSection(&this->criticalSection);
+		//ReleaseMutex(this->mutex);
 		delete this->pSend;
 		this->pSend = NULL;
 	}
@@ -175,12 +179,15 @@ bool MySocket::RecvCommand(wchar_t* Command, char* buf) {
 	// 接收比特流
 	memset(buf, 0, CMDSIZE);
 	int ret = 0;
-	WaitForSingleObject(this->mutex, INFINITE);
+	EnterCriticalSection(&this->criticalSection);
+	//WaitForSingleObject(this->mutex, INFINITE);
 	if ((ret = recv(this->sock, buf, CMDSIZE, 0)) <= 0) {
 		wprintf(L"Recv cmd error %d\n", WSAGetLastError());
+		LeaveCriticalSection(&this->criticalSection);
 		return false;
 	}
-	ReleaseMutex(this->mutex);
+	LeaveCriticalSection(&this->criticalSection);
+	//ReleaseMutex(this->mutex);
 	buf[ret] = '\0';
 	int messageLength = MultiByteToWideChar(CP_ACP, 0, buf, ret, NULL, 0);
 	//wchar_t* message = new wchar_t[messageLength];
@@ -195,15 +202,18 @@ bool MySocket::RecvIns(UINT32* command) {
 	memset(buf, 0, sizeof(UINT32));
 	// 接收比特流
 	int ret = 0;
-	WaitForSingleObject(this->mutex, INFINITE);
+	EnterCriticalSection(&this->criticalSection);
+	//WaitForSingleObject(this->mutex, INFINITE);
 	if ((ret = recv(this->sock, buf, sizeof(UINT32), 0)) <= 0) {
 		wprintf(L"Recv cmd error %d\n", WSAGetLastError());
+		LeaveCriticalSection(&this->criticalSection);
 		return false;
 	}
+	LeaveCriticalSection(&this->criticalSection);
 	//*command = *reinterpret_cast<const UINT32*>(buf);
 	*command = atoi(buf);
 	delete[] buf;
-	ReleaseMutex(this->mutex);
+	//ReleaseMutex(this->mutex);
 	return true;
 }
 
@@ -217,12 +227,15 @@ bool MySocket::SendResult(wchar_t* res, char* buf) {
 	WideCharToMultiByte(CP_ACP, 0, res, dataLen, buf, bufferSize, NULL, NULL);
 	//memcpy(buf, res, byteLen);
 	//ret = send(this->sock, buf, byteLen, 0);
-	WaitForSingleObject(this->mutex, INFINITE);
+	EnterCriticalSection(&this->criticalSection);
+	//WaitForSingleObject(this->mutex, INFINITE);
 	ret = send(this->sock, buf, byteLen, 0);
 	if (ret <= 0) {
+		LeaveCriticalSection(&this->criticalSection);
 		return false;
 	}
-	ReleaseMutex(this->mutex);
+	LeaveCriticalSection(&this->criticalSection);
+	//ReleaseMutex(this->mutex);
 	return true;
 }
 
@@ -273,12 +286,15 @@ bool MySocket::WriteToFile(char* FileBuf, wchar_t* path) {
 }
 
 bool MySocket::RecvFile(char* File, int len) {
-	WaitForSingleObject(this->mutex, INFINITE);
+	EnterCriticalSection(&this->criticalSection);
+	//WaitForSingleObject(this->mutex, INFINITE);
 	int ret = recv(this->sock, File, len, 0);
 	if (ret <= 0) {
+		LeaveCriticalSection(&this->criticalSection);
 		return false;
 	}
-	ReleaseMutex(this->mutex);
+	LeaveCriticalSection(&this->criticalSection);
+	//ReleaseMutex(this->mutex);
 	File[ret] = '\0';
 	return true;
 }
@@ -316,13 +332,15 @@ int MySocket::ReadFromFile(wchar_t* Path, UINT32* len, char** FileBuf) {
 
 bool MySocket::SendFile(char* File, int len) {
 
-	WaitForSingleObject(this->mutex, INFINITE);
+	EnterCriticalSection(&this->criticalSection);
+	//WaitForSingleObject(this->mutex, INFINITE);
 	int ret = send(this->sock, File, len, 0);
 	if (ret <= 0) {
+		LeaveCriticalSection(&this->criticalSection);
 		return false;
 	}
-
-	ReleaseMutex(this->mutex);
+	LeaveCriticalSection(&this->criticalSection);
+	//ReleaseMutex(this->mutex);
 
 	return true;
 }
@@ -333,13 +351,16 @@ bool MySocket::SendCommand(UINT32 command) {
 	char* data = new char[sizeof(UINT32)];
 	ZeroMemory(data, sizeof(UINT32));
 	itoa(command, data, 10);
-	WaitForSingleObject(this->mutex, INFINITE);
+	EnterCriticalSection(&this->criticalSection);
+	//WaitForSingleObject(this->mutex, INFINITE);
 	int ret = send(this->sock, data, strlen(data), 0);
 
 	if (ret <= 0) {
+		LeaveCriticalSection(&this->criticalSection);
 		return false;
 	}
-	ReleaseMutex(this->mutex);
+	LeaveCriticalSection(&this->criticalSection);
+	//ReleaseMutex(this->mutex);
 	delete[] data;
 
 	return true;

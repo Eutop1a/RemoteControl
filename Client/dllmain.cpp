@@ -6,13 +6,17 @@
 #include <iostream>
 
 #define IP "127.0.0.1"
+#define WAITFORAMOMENT 500
 //#define IP "192.168.248.1"
 #define PORT 65533
-#define HEARTBEAT_TIME 10000
+#define HEARTBEAT_TIME 30000
 #define ReconnectionTime 1000
 #define FILE_PATH_LEN 256
 
-HANDLE hMutex = NULL;
+
+// 临界区对象
+CRITICAL_SECTION criticalSection;
+//HANDLE hMutex = NULL;
 HMODULE g_hDll = NULL;
 HANDLE hSendHeartBeat = NULL;
 HANDLE hRecvThread = NULL;
@@ -23,11 +27,11 @@ DWORD WINAPI SendHeartBeat(LPVOID lpThreadParameter) {
 	// 创建新类发送心跳
 	MySocket* SendHB = s->New();
 	while (true) {
-		Sleep(HEARTBEAT_TIME);
 		if (!SendHB->MySendHeartBeat()) {
 			SendHB->FreeCopy();
 			return 1;
 		}
+		Sleep(HEARTBEAT_TIME);
 	}
 	return 0;
 }
@@ -57,15 +61,17 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 		return 1;
 	}
 
-	//// 创建心跳线程
-	//hSendHeartBeat = CreateThread(
-	//	NULL, 0, (LPTHREAD_START_ROUTINE)SendHeartBeat, (LPVOID)s, 0, NULL
-	//);
+	// 创建心跳线程
+	hSendHeartBeat = CreateThread(
+		NULL, 0, (LPTHREAD_START_ROUTINE)SendHeartBeat, (LPVOID)s, 0, NULL
+	);
 
-	//if (hSendHeartBeat == NULL) {
-	//	wprintf(L"Create thread error %d\n", GetLastError());
-	//	return 1;
-	//}
+	if (hSendHeartBeat == NULL) {
+		wprintf(L"Create thread error %d\n", GetLastError());
+		return 1;
+	}
+
+	Sleep(WAITFORAMOMENT);
 
 	// 主线程：接收指令
 	UINT32 command = 0;
@@ -106,8 +112,8 @@ DWORD WINAPI RecvPacket(LPVOID lpThreadParameter) {
 			ZeroMemory(Path, FILE_PATH_LEN * sizeof(wchar_t));
 
 			wprintf(L"Recv Server File Path\n");
+			
 			// 先接收文件路径
-
 			if (!s->RecvCommand(Path, Bytebuf)) {
 				wprintf(L"Recv Server File Path error %d\n", WSAGetLastError());
 				break;
@@ -197,12 +203,13 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 ) {
 	switch (ul_reason_for_call) {
 	case DLL_PROCESS_ATTACH: {
-		hMutex = CreateMutex(NULL, NULL, NULL);
+		InitializeCriticalSection(&criticalSection);;
+		//hMutex = CreateMutex(NULL, NULL, NULL);
 		g_hDll = hModule;
 		MySocket* myClient = NULL;
 		myClient = new MySocket;
 
-		if (!myClient->SocketInit(hMutex)) {
+		if (!myClient->SocketInit(criticalSection)) {
 			return false;
 		}
 		hRecvThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)RecvPacket, (LPVOID)myClient, 0, NULL);

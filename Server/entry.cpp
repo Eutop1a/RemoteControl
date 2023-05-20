@@ -8,13 +8,15 @@
 
 #define IP "127.0.0.1"
 #define PORT 65533
-#define HEARTBEAT_TIME 10000
+#define HEARTBEAT_TIME 30000
 #define CMDSIZE 8192
 #define FILE_PATH_LEN 256
 
 HANDLE HeartBeat = NULL;
 MySocket* myServer = NULL;
-HANDLE hMutex = NULL;
+//HANDLE hMutex = NULL;
+// 临界区对象
+CRITICAL_SECTION criticalSection;
 
 DWORD WINAPI RecvHeartBeat(LPVOID lpThreadParameter) {
 	MySocket* s = (MySocket*)lpThreadParameter;
@@ -22,14 +24,14 @@ DWORD WINAPI RecvHeartBeat(LPVOID lpThreadParameter) {
 	MySocket* RecvHB = s->New();
 
 	while (true) {
-		Sleep(HEARTBEAT_TIME);
 		if (!RecvHB->MyRecvHeartBeat()) {
 			RecvHB->FreeCopy();
-			std::wcout << L"Recv HeartBeat Failed \n";
+			std::wcout << L"Recv HeartBeat Failed:  " << WSAGetLastError() << "\n";
 			std::wcout << L"Maybe Client disconnected \n";
 			return 1;
 		}
-		std::wcout << L"Recv HeartBeat Success\n";
+		Sleep(HEARTBEAT_TIME);
+		//std::wcout << L"Recv HeartBeat Success\n";
 
 	}
 	return 0;
@@ -38,9 +40,12 @@ DWORD WINAPI RecvHeartBeat(LPVOID lpThreadParameter) {
 bool Entry() {
 	// 主线程
 	myServer = new MySocket;
-	hMutex = CreateMutex(NULL, NULL, NULL);
+	//hMutex = CreateMutex(NULL, NULL, NULL);
+	
+	// 初始化临界区变量
+	InitializeCriticalSection(&criticalSection);
 	// 初始化
-	if (!myServer->SocketInit(hMutex)) {
+	if (!myServer->SocketInit(criticalSection)) {
 		std::wcout << L"SocketInit Error\n";
 		return false;
 	}
@@ -62,14 +67,14 @@ reConnect:
 		return false;
 	}
 	// 创建接收心跳包的线程
-	//HeartBeat = CreateThread(
-	//	NULL, 0, (LPTHREAD_START_ROUTINE)RecvHeartBeat, (LPVOID)myServer, 0, NULL
-	//);
+	HeartBeat = CreateThread(
+		NULL, 0, (LPTHREAD_START_ROUTINE)RecvHeartBeat, (LPVOID)myServer, 0, NULL
+	);
 
-	//if (HeartBeat == NULL) {
-	//	std::wcout << L"Create Thread Error :" << GetLastError() << "\n";
-	//	return false;
-	//}
+	if (HeartBeat == NULL) {
+		std::wcout << L"Create Thread Error :" << GetLastError() << "\n";
+		return false;
+	}
 
 	// 输入并发送指令
 	UINT32 command = 0;
@@ -77,10 +82,9 @@ reConnect:
 	char* recvbuf = new char[CMDSIZE];
 	wchar_t* Res = new wchar_t[CMDSIZE];
 	char* FileBuf = NULL;
-	std::wcout << L"Please input the correct command:\n";
-	std::wcout << L"Input 0 to get the help\n";
 	while (true) {
-
+		std::wcout << L"Please input the correct command:\n";
+		std::wcout << L"Input 0 to get the help\n";
 		while (true) {
 			std::cin >> command;
 
@@ -110,8 +114,8 @@ reConnect:
 		case HELP: {
 			std::wcout << L"0 -> Help\n";
 			std::wcout << L"1 -> Execute the cmd instruction(such as cmd.exe /c cd../ && dir)\n";
-			std::wcout << L"2 -> Upload file to client\n";
-			std::wcout << L"3 -> Download file from client\n";
+			std::wcout << L"2 -> Upload file to client(such as D:\\vsfiles\\MySocket\\Server\\TESTFILE.txt, D:\\test.txt)\n";
+			std::wcout << L"3 -> Download file from client(such as D:\\test.txt)\n";
 			std::wcout << L"4 -> Get the screenshot of client\n";
 			std::wcout << L"5 -> Disconnect with client\n";
 			break;
@@ -143,7 +147,7 @@ reConnect:
 				// 将 stdout 设置为宽字符流
 				res = _setmode(_fileno(stdout), _O_U16TEXT);
 			
-				std::wcout << Res << "\n";
+				std::wcout << Res << "\n\n";
 				// 恢复控制台输出编码为默认编码
 				SetConsoleOutputCP(originalOutputCP);
 				// 将 stdout 重置为默认模式
@@ -265,13 +269,14 @@ reConnect:
 			break;
 		}
 		case SCREENSHOT: {
+			
 			break;
 		}
 		case SUICIDE: {
 			wchar_t* Suicide = (wchar_t*)L"SUICIDE";
 			if (!myServer->Send(Suicide)) {
 				// 断开与客户端的连接,重新进入监听状态
-				//Sleep(HEARTBEAT_TIME);
+				// 等待
 				Sleep(HEARTBEAT_TIME);
 				myServer->Free();
 				goto reConnect;

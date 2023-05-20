@@ -26,6 +26,8 @@ struct HEARTBEAT {
 
 class MySocket {
 private:
+	// 临界区对象
+	CRITICAL_SECTION criticalSection;
 	// socket
 	SOCKET sock;
 	// 接收数据缓冲区
@@ -37,7 +39,7 @@ private:
 
 public:
 	// 初始化Socket
-	bool SocketInit(HANDLE mutex);
+	bool SocketInit(CRITICAL_SECTION criticalSection);
 	// 复制一个具有相同socket和mutex的类，用FreeCopy释放
 	MySocket* New();
 	// 释放复制的类

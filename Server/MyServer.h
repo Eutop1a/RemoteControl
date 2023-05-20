@@ -27,6 +27,8 @@ struct HEARTBEAT {
 
 class MySocket {
 private:
+	// 临界区对象
+	CRITICAL_SECTION criticalSection;
 	// Client socket
 	SOCKET sClient;
 	// Server socket
@@ -36,11 +38,11 @@ private:
 	// 发送数据缓冲区
 	void* pSend;
 	// 互斥体，保证发送和接收不冲突
-	HANDLE mutex;
+	/*HANDLE mutex;*/
 
 public:
 	// 初始化Socket
-	bool SocketInit(HANDLE mutex);
+	bool SocketInit(CRITICAL_SECTION criticalSection);
 	// 复制一个具有相同socket和mutex的类，用FreeCopy释放
 	MySocket* New();
 	// 释放复制的类
@@ -58,7 +60,7 @@ public:
 	// 循环接受数据
 	bool Recv();
 	// 接收宽字符数据
-	bool WidthRecv();
+	//bool WidthRecv();
 	// 接收心跳包
 	bool MyRecvHeartBeat();
 	// 发送command
